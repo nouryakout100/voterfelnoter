@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Elections DApp</title>
+    <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="bg-gray-100 text-gray-900">
+
+    <div class="max-w-3xl mx-auto mt-10 p-6 bg-white shadow-lg rounded-xl">
+        <h1 class="text-3xl font-bold text-center mb-6">Elections DApp</h1>
+
+        <!-- Connect Wallet -->
+        <button id="connectBtn" class="w-full bg-blue-600 text-white p-3 rounded-lg hover:bg-blue-700">
+            Connect MetaMask
+        </button>
+
+        <p id="walletAddress" class="text-center mt-3 text-gray-700"></p>
+
+        <!-- Add Candidate (Admin only) -->
+        <div class="mt-8">
+            <h2 class="text-xl font-semibold mb-2">Add Candidate (Admin Only)</h2>
+            <input id="candidateName" type="text" placeholder="Candidate name"
+                   class="border p-2 w-full rounded-lg">
+            <button onclick="addCandidate()"
+                    class="mt-2 bg-green-600 text-white p-2 rounded-lg hover:bg-green-700 w-full">
+                Add Candidate
+            </button>
+        </div>
+
+        <!-- Vote Section -->
+        <div class="mt-10">
+            <h2 class="text-xl font-semibold mb-2">Vote for a Candidate</h2>
+
+            <button onclick="loadCandidates()"
+                    class="mb-2 bg-purple-600 text-white p-2 rounded-lg hover:bg-purple-700 w-full">
+                Load Candidates
+            </button>
+
+            <div id="candidateList" class="mt-4 space-y-3"></div>
+        </div>
+
+        <!-- Admin: View Results -->
+        <div class="mt-10">
+            <h2 class="text-xl font-semibold mb-2">Admin View: All Results</h2>
+            <button onclick="viewResults()"
+                    class="bg-red-600 text-white p-2 rounded-lg hover:bg-red-700 w-full">
+                View All Results
+            </button>
+
+            <div id="resultsList" class="mt-4 space-y-3"></div>
+        </div>
+    </div>
+
+<script>
+
+    let provider;
+    let signer;
+    let contract;
+
+    // TODO: Paste your deployed contract address here
+    const contractAddress = "0x9D5e1Ddee8667d0c66350f2F71cf9b3e050d3390";
+
+    // TODO: Paste your ABI here (copy from Remix → ABI)
+    const contractABI = [
+	{
+		"inputs": [],
+		"stateMutability": "nonpayable",
+		"type": "constructor"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "candidateIndex",
+				"type": "uint256"
+			}
+		],
+		"name": "vote",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "string",
+				"name": "_name",
+				"type": "string"
+			}
+		],
+		"name": "yeniCandidate",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"name": "candidates",
+		"outputs": [
+			{
+				"internalType": "string",
+				"name": "name",
+				"type": "string"
+			},
+			{
+				"internalType": "uint256",
+				"name": "voteCount",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "viewAllResults",
+		"outputs": [
+			{
+				"internalType": "string[]",
+				"name": "",
+				"type": "string[]"
+			},
+			{
+				"internalType": "uint256[]",
+				"name": "",
+				"type": "uint256[]"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	}
+];
+
+    document.getElementById("connectBtn").onclick = async () => {
+        if (typeof window.ethereum !== "undefined") {
+            provider = new ethers.providers.Web3Provider(window.ethereum);
+            await provider.send("eth_requestAccounts", []);
+            signer = provider.getSigner();
+
+            const address = await signer.getAddress();
+            document.getElementById("walletAddress").innerText = "Connected: " + address;
+
+            contract = new ethers.Contract(contractAddress, contractABI, signer);
+        } else {
+            alert("Please install MetaMask!");
+        }
+    };
+
+    // Add new candidate (admin only)
+    async function addCandidate() {
+        const name = document.getElementById("candidateName").value;
+        if (!name) return alert("Enter candidate name");
+
+        try {
+            const tx = await contract.yeniCandidate(name);
+            await tx.wait();
+            alert("Candidate added!");
+        } catch (err) {
+            alert("Error: " + err.message);
+        }
+    }
+
+    // Load all candidates
+    async function loadCandidates() {
+    const listDiv = document.getElementById("candidateList");
+    listDiv.innerHTML = "";
+
+    try {
+        // Admin-only function - returns (names[], votes[])
+        const results = await contract.viewAllResults();
+        const names = results[0];
+
+        for (let i = 0; i < names.length; i++) {
+
+            const div = document.createElement("div");
+            div.className = "p-3 bg-gray-200 rounded-lg flex justify-between";
+
+            div.innerHTML = `
+                <span class="font-semibold">${names[i]}</span>
+                <button onclick="vote(${i})"
+                    class="bg-blue-600 text-white px-3 py-1 rounded-lg hover:bg-blue-700">
+                    Vote
+                </button>
+            `;
+
+            listDiv.appendChild(div);
+        }
+
+    } catch (err) {
+        alert("Error loading candidates. Only admin can load them.\n\n" + err.message);
+    }
+}
+
+
+    // Vote
+    async function vote(index) {
+        try {
+            const tx = await contract.vote(index);
+            await tx.wait();
+            alert("Vote submitted!");
+        } catch (err) {
+            alert("Error: " + err.message);
+        }
+    }
+
+    // Admin-only: view results
+    async function viewResults() {
+        const resultsDiv = document.getElementById("resultsList");
+        resultsDiv.innerHTML = "";
+
+        try {
+            const [names, votes] = await contract.viewAllResults();
+
+            for (let i = 0; i < names.length; i++) {
+                const div = document.createElement("div");
+                div.className = "p-3 bg-gray-200 rounded-lg";
+
+                div.innerHTML = `
+                    <p><strong>${names[i]}</strong></p>
+                    <p>Votes: ${votes[i]}</p>
+                `;
+                resultsDiv.appendChild(div);
+            }
+
+        } catch (err) {
+            alert("Admin only: " + err.message);
+        }
+    }
+
+</script>
+
+</body>
+</html>
